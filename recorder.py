@@ -157,7 +157,6 @@ def get_daily_report(date_str=None):
     lines.append("・的中を保証するもんじゃねぇ。馬券は自己責任で頼むぜ旦那！")
     lines.append("・20歳未満の馬券購入は法律で禁止されてるぜ。")
     lines.append("・ギャンブルにのめり込むなよ旦那。生活を壊したら元も子もねぇ。")
-    lines.append("・困ったときは→ ギャンブル等依存症相談窓口：0570-004-978")
     lines.append("━━━━━━━━━━━━━━━━━━━━")
 
     return "\n".join(lines)
@@ -268,7 +267,6 @@ def get_collation_report(date_str, result_fetcher):
     lines.append("━━━━━━━━━━━━━━━━━━━━")
     lines.append("⚠️ これはAI予想の的中率だぜ。馬券は自己責任で頼むぜ旦那！")
     lines.append("・20歳未満の馬券購入は法律で禁止されてるぜ。")
-    lines.append("・困ったときは→ ギャンブル等依存症相談窓口：0570-004-978")
     lines.append("━━━━━━━━━━━━━━━━━━━━")
 
     return "\n".join(lines)

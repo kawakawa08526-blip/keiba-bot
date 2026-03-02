@@ -258,7 +258,6 @@ def format_report(ranked: pd.DataFrame, bets: dict, race_info: dict, pace_report
     lines.append("・馬券の購入は必ず自己責任で頼むぜ旦那！")
     lines.append("・20歳未満の馬券購入は法律で禁止されてるぜ。")
     lines.append("・ギャンブルにのめり込むなよ旦那。生活を壊したら元も子もねぇ。")
-    lines.append("・困ったときは→ ギャンブル等依存症相談窓口：0570-004-978")
     lines.append("━━━━━━━━━━━━━━━━━━━━")
     
     return "\n".join(lines)
