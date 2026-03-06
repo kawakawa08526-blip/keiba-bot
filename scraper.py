@@ -37,33 +37,68 @@ def find_race_id(place: str, race_num: int) -> str:
     """
     netkeibaの開催一覧から対象レースのrace_idを取得する
     当日 → 翌日 → 翌々日 の順で検索する（前日予想対応）
+    複数のURLパターンで検索する
     """
     from datetime import timedelta
     today = datetime.today()
+    place_code = PLACE_CODES.get(place, "")
 
     # 当日・翌日・翌々日の順で検索
     for delta in [0, 1, 2]:
         target = today + timedelta(days=delta)
         date_str = target.strftime("%Y%m%d")
+
+        # 複数のURLパターンで試す
+        urls = [
+            f"https://race.netkeiba.com/top/race_list.html?kaisai_date={date_str}",
+            f"https://race.netkeiba.com/top/race_list_sub.html?kaisai_date={date_str}",
+            f"https://www.netkeiba.com/?pid=race_list&date={date_str}",
+        ]
+
+        for url in urls:
+            try:
+                res = _get(url, sleep=1.0)
+                soup = BeautifulSoup(res.text, "html.parser")
+
+                # すべてのリンクからrace_idを探す
+                for a in soup.find_all("a", href=True):
+                    href = a["href"]
+                    # race_idパターンを複数試す
+                    for pattern in [
+                        r"race_id=(\d{12})",
+                        r"/race/shutuba\.html\?race_id=(\d{12})",
+                        r"/race/result\.html\?race_id=(\d{12})",
+                        r"(\d{12})",
+                    ]:
+                        m = re.search(pattern, href)
+                        if not m:
+                            continue
+                        race_id = m.group(1)
+                        if len(race_id) != 12:
+                            continue
+                        if race_id[4:6] == place_code and int(race_id[-2:]) == race_num:
+                            print(f"[INFO] race_id発見: {race_id}（{date_str}）URL:{url}")
+                            return race_id
+
+            except Exception as e:
+                print(f"[ERROR] {date_str} {url} 失敗: {e}")
+                continue
+
+        # 直接shutubaページにアクセスして確認
         try:
-            url = f"https://race.netkeiba.com/top/race_list.html?kaisai_date={date_str}"
-            res = _get(url)
-            soup = BeautifulSoup(res.text, "html.parser")
-
-            for a in soup.find_all("a", href=True):
-                href = a["href"]
-                m = re.search(r"race_id=(\d{12})", href)
-                if not m:
-                    continue
-                race_id = m.group(1)
-                place_code = PLACE_CODES.get(place, "")
-                if race_id[4:6] == place_code and int(race_id[-2:]) == race_num:
-                    print(f"[INFO] race_id発見: {race_id}（{date_str}）")
-                    return race_id
-
+            # 開催回・日を1〜9で総当たり
+            for kai in [1, 2]:
+                for nichi in range(1, 10):
+                    race_id = make_race_id(date_str[:4], place, kai, nichi, race_num)
+                    url = f"https://race.netkeiba.com/race/shutuba.html?race_id={race_id}"
+                    res = _get(url, sleep=0.5)
+                    soup = BeautifulSoup(res.text, "html.parser")
+                    # 出馬表が存在するか確認
+                    if soup.select("tr.HorseList"):
+                        print(f"[INFO] 直接アクセスでrace_id発見: {race_id}")
+                        return race_id
         except Exception as e:
-            print(f"[ERROR] {date_str} race_id検索失敗: {e}")
-            continue
+            print(f"[ERROR] 直接アクセス失敗: {e}")
 
     # 全て見つからなかった場合はフォールバック
     date_str = today.strftime("%Y%m%d")
