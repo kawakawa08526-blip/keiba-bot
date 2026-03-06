@@ -233,6 +233,34 @@ def get_horse_history(horse_id: str, limit: int = 15) -> pd.DataFrame:
         return pd.DataFrame()
 
 # ── 過去レース結果（学習用） ──────────────────────────
+def find_race_id_by_date(place: str, race_num: int, date_str: str) -> str:
+    """過去日付のrace_idを取得（find_race_idの日付指定版）"""
+    from datetime import datetime as dt
+    place_code = PLACE_CODES.get(place, "")
+    year = date_str[:4]
+    try:
+        url = f"https://race.netkeiba.com/top/race_list.html?kaisai_date={date_str}"
+        res = _get(url, sleep=1.0)
+        ids = re.findall(r"(\d{12})", res.text)
+        for race_id in ids:
+            if race_id[4:6] == place_code and int(race_id[-2:]) == race_num:
+                return race_id
+    except Exception as e:
+        print(f"[ERROR] find_race_id_by_date失敗: {e}")
+    # 総当たり
+    for kai in range(1, 6):
+        for nichi in range(1, 10):
+            race_id = f"{year}{place_code}{kai:02d}{nichi:02d}{race_num:02d}"
+            try:
+                url = f"https://race.netkeiba.com/race/shutuba.html?race_id={race_id}"
+                res = _get(url, sleep=0.3)
+                if "HorseList" in res.text:
+                    return race_id
+            except:
+                continue
+    return make_race_id(year, place, 1, 1, race_num)
+
+
 def get_race_result(race_id: str) -> dict:
     url = f"https://race.netkeiba.com/race/result.html?race_id={race_id}"
     try:

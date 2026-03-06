@@ -10,7 +10,7 @@ from flask import Flask, request, abort
 from scraper import (
     get_shutuba, get_race_info, get_horse_history,
     get_odds, get_race_result, make_race_id, find_race_id,
-    find_race_id_by_date, PLACE_CODES
+    PLACE_CODES
 )
 from pace_predictor import add_running_styles, build_scenario, format_pace_report
 from predictor import (
@@ -345,5 +345,5 @@ def on_message(event):
         )
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
+    port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
