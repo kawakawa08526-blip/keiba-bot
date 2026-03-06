@@ -10,7 +10,7 @@ from flask import Flask, request, abort
 from scraper import (
     get_shutuba, get_race_info, get_horse_history,
     get_odds, get_race_result, make_race_id, find_race_id,
-    PLACE_CODES
+    get_today_race_ids, PLACE_CODES
 )
 from pace_predictor import add_running_styles, build_scenario, format_pace_report
 from predictor import (
@@ -63,6 +63,7 @@ HELP = (
     "✅ 全馬券種の買い目（単勝〜3連単）\n"
     "✅ 資金配分シミュレーター\n\n"
     "📋【その他のコマンド】\n"
+    "「今日のレース」→ 本日の開催レース一覧\n"
     "「戦績」→ 今日の参戦レース＆的中率\n"
     "「結果 東京1R」→ レース結果を手動取得\n"
     "「予算3000 東京1R」→ 資金配分つき予想\n\n"
@@ -178,6 +179,41 @@ def do_collation(user_id, date_str):
         report = f"照合中にエラーが出ちまったぜ旦那…\nもう一度試してくれ！\n({e})"
     push_msg(user_id, report)
 
+def do_today_races(user_id):
+    """本日開催の全レースIDを取得してプッシュ通知"""
+    try:
+        races = get_today_race_ids()
+        if not races:
+            push_msg(user_id,
+                "旦那、今日は開催情報が取れなかったぜ…\n"
+                "レース前日の夕方以降に試してくれ！"
+            )
+            return
+
+        # 場所ごとにグループ化
+        from collections import defaultdict
+        grouped = defaultdict(list)
+        for r in races:
+            grouped[r["place"]].append(r)
+
+        lines = []
+        today = datetime.today().strftime("%Y/%m/%d")
+        lines.append(f"🏇【{today} 本日の開催レース】")
+        lines.append("━━━━━━━━━━━━━━")
+        for place, rs in grouped.items():
+            race_nums = ", ".join([f"{r['race_num']}R" for r in rs])
+            lines.append(f"📍 {place}：{race_nums}")
+        lines.append("━━━━━━━━━━━━━━")
+        lines.append(f"合計 {len(races)} レース")
+        lines.append("")
+        lines.append("予想したいレースを「東京1R」のように送ってくれ！")
+
+        push_msg(user_id, "\n".join(lines))
+
+    except Exception as e:
+        push_msg(user_id, f"レース一覧の取得にしくじっちまった…\nもう一回試してくれ！\n({e})")
+
+
 def do_auto_train():
     """蓄積データで自動学習（週1回 月曜に実行）"""
     try:
@@ -232,6 +268,19 @@ def health():
 @handler.add(MessageEvent, message=TextMessageContent)
 def on_message(event):
     text = event.message.text.strip()
+
+    # ── 本日のレースID一覧 ──
+    if text in ["今日のレース", "本日のレース", "レース一覧", "開催", "レースid", "レースID"]:
+        reply_msg(event.reply_token,
+            "おう旦那、今日の開催レースを調べてくるぜ！\n少し待ってくれ…🔍"
+        )
+        t = threading.Thread(
+            target=do_today_races,
+            args=(event.source.user_id,)
+        )
+        t.daemon = True
+        t.start()
+        return
 
     # ── ヘルプ ──
     if text in ["ヘルプ", "help", "使い方", "?", "へるぷ"]:

@@ -22,6 +22,9 @@ PLACE_CODES = {
     "阪神": "09", "小倉": "10"
 }
 
+# 逆引き用（コード → 場所名）
+PLACE_NAMES = {v: k for k, v in PLACE_CODES.items()}
+
 def _get(url, sleep=0.8):
     time.sleep(sleep)
     res = requests.get(url, headers=HEADERS, timeout=15)
@@ -32,11 +35,62 @@ def make_race_id(date: str, place: str, kai: int, nichi: int, race_num: int) -> 
     code = PLACE_CODES.get(place, "05")
     return f"{date}{code}{kai:02d}{nichi:02d}{race_num:02d}"
 
+# ── 当日の全race_idをリアルタイムで一覧取得 ──────────────
+def get_today_race_ids(date_str: str = None) -> list:
+    """
+    netkeibaのrace_list.htmlから当日開催の全race_idを取得する。
+
+    Parameters
+    ----------
+    date_str : str, optional
+        対象日付（YYYYMMDD形式）。省略時は今日の日付を使用。
+
+    Returns
+    -------
+    list of dict
+        [{"race_id": "...", "place": "東京", "race_num": 1, "date": "20260307"}, ...]
+    """
+    if date_str is None:
+        date_str = datetime.today().strftime("%Y%m%d")
+
+    url = f"https://race.netkeiba.com/top/race_list.html?kaisai_date={date_str}"
+    print(f"[INFO] 当日レースID取得中: {url}")
+
+    try:
+        res = _get(url, sleep=1.0)
+        # 12桁のrace_idを全て抽出（重複排除・順序保持）
+        raw_ids = re.findall(r"\b(\d{12})\b", res.text)
+        seen = set()
+        races = []
+        for race_id in raw_ids:
+            if race_id in seen:
+                continue
+            seen.add(race_id)
+            place_code = race_id[4:6]
+            place_name = PLACE_NAMES.get(place_code, f"不明({place_code})")
+            race_num   = int(race_id[-2:])
+            races.append({
+                "race_id":  race_id,
+                "place":    place_name,
+                "race_num": race_num,
+                "date":     date_str,
+            })
+
+        races.sort(key=lambda x: (x["place"], x["race_num"]))
+        print(f"[INFO] {date_str} の開催レース: {len(races)}件")
+        for r in races:
+            print(f"  {r['place']} {r['race_num']}R → {r['race_id']}")
+        return races
+
+    except Exception as e:
+        print(f"[ERROR] get_today_race_ids失敗: {e}")
+        return []
+
 # ── 今日のrace_idを検索して正しく取得 ──────────────────
 def find_race_id(place: str, race_num: int) -> str:
     """
     netkeibaのrace_idを取得する
-    1. race_list.htmlから12桁IDを全抽出
+    1. race_list.htmlから12桁IDを全抽出（get_today_race_ids利用）
     2. 見つからない場合は総当たりで直接確認
     """
     from datetime import timedelta
@@ -50,15 +104,13 @@ def find_race_id(place: str, race_num: int) -> str:
         date_str = target.strftime("%Y%m%d")
         year = date_str[:4]
 
-        # 方法1: race_list.htmlから12桁IDを全抽出
+        # 方法1: get_today_race_idsで一括取得して検索
         try:
-            url = f"https://race.netkeiba.com/top/race_list.html?kaisai_date={date_str}"
-            res = _get(url, sleep=1.0)
-            ids = re.findall(r"(\d{12})", res.text)
-            for race_id in ids:
-                if race_id[4:6] == place_code and int(race_id[-2:]) == race_num:
-                    print(f"[INFO] 方法1でrace_id発見: {race_id}")
-                    return race_id
+            races = get_today_race_ids(date_str)
+            for r in races:
+                if r["place"] == place and r["race_num"] == race_num:
+                    print(f"[INFO] 方法1でrace_id発見: {r['race_id']}")
+                    return r["race_id"]
         except Exception as e:
             print(f"[ERROR] 方法1失敗: {e}")
 
@@ -250,12 +302,10 @@ def find_race_id_by_date(place: str, race_num: int, date_str: str) -> str:
     place_code = PLACE_CODES.get(place, "")
     year = date_str[:4]
     try:
-        url = f"https://race.netkeiba.com/top/race_list.html?kaisai_date={date_str}"
-        res = _get(url, sleep=1.0)
-        ids = re.findall(r"(\d{12})", res.text)
-        for race_id in ids:
-            if race_id[4:6] == place_code and int(race_id[-2:]) == race_num:
-                return race_id
+        races = get_today_race_ids(date_str)
+        for r in races:
+            if r["place"] == place and r["race_num"] == race_num:
+                return r["race_id"]
     except Exception as e:
         print(f"[ERROR] find_race_id_by_date失敗: {e}")
     # 総当たり
