@@ -199,30 +199,40 @@ def get_race_info(race_id: str) -> dict:
     try:
         soup = BeautifulSoup(_get(url).text, "html.parser")
 
-        title = soup.select_one(".RaceName, [class*='RaceName'], [class*='レース名']")
-        if title:
-            info["race_name"] = title.get_text(strip=True)
+        # レース名（複数セレクタで対応）
+        for sel in [".RaceName", "[class*='RaceName']", "h1.RaceName", ".race_name"]:
+            title = soup.select_one(sel)
+            if title and title.get_text(strip=True):
+                info["race_name"] = title.get_text(strip=True)
+                break
 
-        d1 = soup.select_one(".RaceData01, [class*='RaceData01']")
-        if d1:
-            t = d1.get_text()
-            m = re.search(r"(\d{3,4})m", t)
-            if m:
-                info["distance"] = int(m.group(1))
-            info["surface"] = "芝" if "芝" in t else "ダート"
-            info["direction"] = "右" if "右" in t else ("左" if "左" in t else "直線")
+        # ページ全体テキストから距離・馬場を抽出（最も確実）
+        full_text = soup.get_text()
 
-        d2 = soup.select_one(".RaceData02, [class*='RaceData02']")
-        if d2:
-            t2 = d2.get_text()
-            for cond in ["不良", "重", "稍重", "良"]:
-                if cond in t2:
-                    info["track_condition"] = cond
-                    break
-            for cls in ["G1", "G2", "G3", "オープン", "3勝", "2勝", "1勝", "未勝利", "新馬"]:
-                if cls in t2:
-                    info["race_class"] = cls
-                    break
+        # 距離
+        m = re.search(r"(\d{3,4})m", full_text)
+        if m:
+            info["distance"] = int(m.group(1))
+
+        # 芝/ダート
+        info["surface"] = "芝" if "芝" in full_text[:3000] else "ダート"
+
+        # 方向
+        info["direction"] = "右" if "右" in full_text[:3000] else ("左" if "左" in full_text[:3000] else "直線")
+
+        # 馬場状態
+        for cond in ["不良", "重", "稍重", "良"]:
+            if cond in full_text[:3000]:
+                info["track_condition"] = cond
+                break
+
+        # クラス
+        for cls in ["G1", "G2", "G3", "オープン", "3勝", "2勝", "1勝", "未勝利", "新馬"]:
+            if cls in full_text[:5000]:
+                info["race_class"] = cls
+                break
+
+        print(f"[INFO] race_info: {info['race_name']} {info['distance']}m {info['surface']} {info['race_class']}")
     except Exception as e:
         print(f"[SCRAPER ERROR] レース情報: {e}")
     return info
