@@ -34,8 +34,8 @@ def make_race_id(date: str, place: str, kai: int, nichi: int, race_num: int) -> 
 def find_race_id(place: str, race_num: int) -> str:
     """
     netkeibaのrace_idを取得する
-    方法1: race_list.htmlから12桁IDを全抽出（最速・確実）
-    方法2: shutuba.htmlに直接アクセスして出馬表＋日付を確認
+    方法1: race_list.htmlのhrefからrace_idを直接抽出（最確実）
+    方法2: shutuba.html総当たり + race_list URLで日付確認
     """
     today = datetime.today()
     place_code = PLACE_CODES.get(place, "")
@@ -46,44 +46,51 @@ def find_race_id(place: str, race_num: int) -> str:
         target = today + timedelta(days=delta)
         date_str = target.strftime("%Y%m%d")
         year = date_str[:4]
-        month = str(int(date_str[4:6]))
-        day   = str(int(date_str[6:8]))
 
-        # 方法1: race_list.htmlから12桁IDを全抽出
+        # 方法1: race_list.htmlのhref属性からrace_idを直接抽出
+        # href="/race/shutuba.html?race_id=202606020307" の形式
         try:
             url = f"https://race.netkeiba.com/top/race_list.html?kaisai_date={date_str}"
             res = _get(url, sleep=1.0)
-            ids = re.findall(r"\d{12}", res.text)
-            # 場所コードとR番号が一致し、かつ年が正しいものだけ
+            # hrefの中のrace_idを抽出（日付が正確に埋め込まれている）
+            href_ids = re.findall(r'race_id=(\d{12})', res.text)
             matched = [
-                i for i in ids
+                i for i in href_ids
                 if i[:4] == year
                 and i[4:6] == place_code
                 and int(i[-2:]) == race_num
             ]
             if matched:
                 race_id = list(dict.fromkeys(matched))[0]
-                print(f"[INFO] 方法1でrace_id発見: {race_id}")
+                print(f"[INFO] 方法1(href)でrace_id発見: {race_id}")
                 return race_id
+            else:
+                print(f"[INFO] 方法1: {place}{race_num}R {date_str} 見つからず (候補:{len(href_ids)}件)")
         except Exception as e:
             print(f"[ERROR] 方法1失敗: {e}")
 
-        # 方法2: 総当たりでshutuba.htmlに直接アクセス＋日付確認
+        # 方法2: shutuba.html総当たり
+        # そのページのURLに含まれる race_list のリンクで日付確認
         print(f"[INFO] 方法2: 総当たり {place}{race_num}R {date_str}")
         for kai in range(1, 6):
-            for nichi in range(1, 10):
+            for nichi in range(1, 9):
                 race_id = f"{year}{place_code}{kai:02d}{nichi:02d}{race_num:02d}"
                 try:
                     url = f"https://race.netkeiba.com/race/shutuba.html?race_id={race_id}"
                     res = _get(url, sleep=0.4)
-                    soup = BeautifulSoup(res.text, "html.parser")
+                    page = res.text
+                    soup = BeautifulSoup(page, "html.parser")
                     horse_rows = soup.select("tr[class*='HorseList']")
                     if not horse_rows or len(horse_rows) < 3:
                         continue
-                    # kaisai_date=YYYYMMDD がページ内リンクに含まれるか確認
-                    # （日付テキストより確実：そのレース専用の日付）
-                    if f"kaisai_date={date_str}" in res.text:
-                        print(f"[INFO] 方法2でrace_id発見: {race_id} ({len(horse_rows)}頭) 日付OK")
+                    # ページ内のhrefに kaisai_date=YYYYMMDD が含まれているか
+                    # または ページ内に race_id=YYYY06MMDD 形式のリンクがあるか
+                    if f"kaisai_date={date_str}" in page or f"race_id={date_str}" in page:
+                        print(f"[INFO] 方法2でrace_id発見: {race_id} ({len(horse_rows)}頭)")
+                        return race_id
+                    # フォールバック：race_listから取得したhref_idsに含まれているか
+                    if race_id in href_ids:
+                        print(f"[INFO] 方法2(href照合)でrace_id発見: {race_id}")
                         return race_id
                 except Exception:
                     continue
@@ -217,19 +224,24 @@ def get_race_info(race_id: str) -> dict:
         if d1:
             t = d1.get_text()
             print(f"[DEBUG] RaceData01: {t[:100]}")
+            # 距離抽出（例：「ダ1200m(右)」「芝2000m(左外)」）
             m = re.search(r"(\d{3,4})m", t)
             if m:
                 info["distance"] = int(m.group(1))
-            info["surface"] = "芝" if "芝" in t else "ダート"
+            # 芝/ダート判定
+            info["surface"] = "芝" if t.startswith("芝") or "芝" == t[0:1] else "ダート"
+            if "ダ" in t[:5] or "ダート" in t[:10]:
+                info["surface"] = "ダート"
+            elif "芝" in t[:5]:
+                info["surface"] = "芝"
+            # 方向
             info["direction"] = "右" if "右" in t else ("左" if "左" in t else "直線")
         else:
-            # フォールバック：race_idから推定
-            # ページHTMLから距離を正規表現で検索
             page = res.text
             m = re.search(r"(\d{3,4})m", page)
             if m:
                 info["distance"] = int(m.group(1))
-            info["surface"] = "ダート" if "ダート" in page[:5000] else "芝"
+            info["surface"] = "ダート" if "ダート" in page[:3000] or "ダ" in page[:500] else "芝"
             print(f"[DEBUG] RaceData01なし。距離={info['distance']} 馬場={info['surface']}")
 
         # RaceData02からクラス・馬場状態を取得
