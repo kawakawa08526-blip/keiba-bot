@@ -197,42 +197,64 @@ def get_race_info(race_id: str) -> dict:
         "race_class": "未勝利",
     }
     try:
-        soup = BeautifulSoup(_get(url).text, "html.parser")
+        res = _get(url)
+        soup = BeautifulSoup(res.text, "html.parser")
 
-        # レース名（複数セレクタで対応）
-        for sel in [".RaceName", "[class*='RaceName']", "h1.RaceName", ".race_name"]:
+        # レース名
+        for sel in [".RaceName", "[class*='RaceName']", "[class*='レース名']"]:
             title = soup.select_one(sel)
             if title and title.get_text(strip=True):
                 info["race_name"] = title.get_text(strip=True)
                 break
 
-        # ページ全体テキストから距離・馬場を抽出（最も確実）
-        full_text = soup.get_text()
-
-        # 距離
-        m = re.search(r"(\d{3,4})m", full_text)
-        if m:
-            info["distance"] = int(m.group(1))
-
-        # 芝/ダート
-        info["surface"] = "芝" if "芝" in full_text[:3000] else "ダート"
-
-        # 方向
-        info["direction"] = "右" if "右" in full_text[:3000] else ("左" if "左" in full_text[:3000] else "直線")
-
-        # 馬場状態
-        for cond in ["不良", "重", "稍重", "良"]:
-            if cond in full_text[:3000]:
-                info["track_condition"] = cond
+        # RaceData01からコース情報を取得
+        d1 = None
+        for sel in [".RaceData01", "[class*='RaceData01']", "[class*='レースデータ']"]:
+            d1 = soup.select_one(sel)
+            if d1:
                 break
 
-        # クラス
+        if d1:
+            t = d1.get_text()
+            print(f"[DEBUG] RaceData01: {t[:100]}")
+            m = re.search(r"(\d{3,4})m", t)
+            if m:
+                info["distance"] = int(m.group(1))
+            info["surface"] = "芝" if "芝" in t else "ダート"
+            info["direction"] = "右" if "右" in t else ("左" if "左" in t else "直線")
+        else:
+            # フォールバック：race_idから推定
+            # ページHTMLから距離を正規表現で検索
+            page = res.text
+            m = re.search(r"(\d{3,4})m", page)
+            if m:
+                info["distance"] = int(m.group(1))
+            info["surface"] = "ダート" if "ダート" in page[:5000] else "芝"
+            print(f"[DEBUG] RaceData01なし。距離={info['distance']} 馬場={info['surface']}")
+
+        # RaceData02からクラス・馬場状態を取得
+        d2 = None
+        for sel in [".RaceData02", "[class*='RaceData02']"]:
+            d2 = soup.select_one(sel)
+            if d2:
+                break
+
+        if d2:
+            t2 = d2.get_text()
+            print(f"[DEBUG] RaceData02: {t2[:100]}")
+        else:
+            t2 = res.text[:8000]
+
+        for cond in ["不良", "重", "稍重", "良"]:
+            if cond in t2:
+                info["track_condition"] = cond
+                break
         for cls in ["G1", "G2", "G3", "オープン", "3勝", "2勝", "1勝", "未勝利", "新馬"]:
-            if cls in full_text[:5000]:
+            if cls in t2:
                 info["race_class"] = cls
                 break
 
-        print(f"[INFO] race_info: {info['race_name']} {info['distance']}m {info['surface']} {info['race_class']}")
+        print(f"[INFO] race_info取得: {info['race_name']} {info['distance']}m {info['surface']} {info['race_class']} 馬場:{info['track_condition']}")
     except Exception as e:
         print(f"[SCRAPER ERROR] レース情報: {e}")
     return info

@@ -147,20 +147,9 @@ def predict_race(race_id, place="", race_num=0, budget=0):
     race_info["race_num"] = race_num
     odds = get_odds(race_id)
 
-    # 馬歴取得（最大5頭のみ・タイムアウト対策）
-    n_horses = len(horses_df)
-    print(f"[INFO] {n_horses}頭の過去成績を取得中...")
+    # 馬歴取得スキップ（タイムアウト対策）
     histories = {}
-    count = 0
-    for _, row in horses_df.iterrows():
-        hid = row.get("horse_id", "")
-        if hid and count < 5:  # 最大5頭に制限
-            try:
-                histories[hid] = get_horse_history(hid)
-                count += 1
-                time.sleep(0.2)
-            except Exception:
-                pass
+    print(f"[INFO] 馬歴取得スキップ（高速モード）")
 
     horses_df = add_running_styles(horses_df, histories)
     scenario   = build_scenario(horses_df, race_info)
