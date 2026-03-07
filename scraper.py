@@ -276,10 +276,11 @@ def get_odds(race_id: str) -> dict:
         return {}
 
 
-def get_horse_history(horse_id: str, limit: int = 15) -> pd.DataFrame:
+def get_horse_history(horse_id: str, limit: int = 5) -> pd.DataFrame:
+    """馬の過去成績（直近5戦のみ取得して高速化）"""
     url = f"https://db.netkeiba.com/horse/{horse_id}/"
     try:
-        soup = BeautifulSoup(_get(url).text, "html.parser")
+        soup = BeautifulSoup(_get(url, sleep=0.3).text, "html.parser")
         records = []
         table = soup.select_one("table.race_table_01")
         if not table:
@@ -307,7 +308,6 @@ def get_horse_history(horse_id: str, limit: int = 15) -> pd.DataFrame:
             except:
                 continue
 
-        time.sleep(0.5)
         return pd.DataFrame(records)
     except Exception as e:
         print(f"[SCRAPER ERROR] 馬歴 ({horse_id}): {e}")

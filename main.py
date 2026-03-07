@@ -153,7 +153,7 @@ def predict_race(race_id, place="", race_num=0, budget=0):
         hid = row.get("horse_id", "")
         if hid:
             histories[hid] = get_horse_history(hid)
-            time.sleep(0.6)
+            time.sleep(0.2)
 
     horses_df = add_running_styles(horses_df, histories)
     scenario   = build_scenario(horses_df, race_info)
