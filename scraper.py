@@ -145,29 +145,19 @@ def get_shutuba(race_id: str) -> pd.DataFrame:
     try:
         res = _get(url)
         soup = BeautifulSoup(res.text, "html.parser")
-        # デバッグ：HTMLの一部をログ出力
-        rows_check = soup.select("tr.HorseList")
-        print(f"[DEBUG] get_shutuba race_id={race_id}")
-        print(f"[DEBUG] HorseList行数: {len(rows_check)}")
-        # HorseListがない場合は別のセレクタを試す
-        alt1 = soup.select("tr.Tr_HorseList")
-        alt2 = soup.select(".HorseList")
-        alt3 = soup.select("table.Shutuba")
-        print(f"[DEBUG] Tr_HorseList={len(alt1)}, .HorseList={len(alt2)}, table.Shutuba={len(alt3)}")
-        # HTMLの一部をログ出力（構造確認用）
-        body = res.text
-        idx = body.find("HorseList")
-        if idx > 0:
-            print(f"[DEBUG] HorseList付近: {body[idx-50:idx+200][:200]}")
-        else:
-            print(f"[DEBUG] HorseListなし。HTML先頭: {body[1000:1200]}")
         horses = []
-        for row in soup.select("tr.HorseList"):
+        # HorseListを持つtr要素を取得（クラス名が変わっても対応）
+        all_rows = soup.select("tr[class*='HorseList']")
+        print(f"[INFO] get_shutuba: {len(all_rows)}頭 race_id={race_id}")
+        for row in all_rows:
             h = {}
-            num = row.select_one(".Umaban")
+            # 馬番（クラス名が英語・日本語両対応）
+            num = row.select_one("[class*='Umaban'], [class*='うまばん']")
             h["num"] = int(num.get_text(strip=True)) if num else 0
 
-            name_tag = row.select_one(".HorseName a")
+            name_tag = row.select_one("[class*='HorseName'] a, [class*='馬名'] a")
+            if not name_tag:
+                name_tag = row.select_one("td a[href*='horse']")
             h["name"] = name_tag.get_text(strip=True) if name_tag else ""
             h["horse_id"] = ""
             if name_tag and name_tag.get("href"):
@@ -175,16 +165,16 @@ def get_shutuba(race_id: str) -> pd.DataFrame:
                 if m:
                     h["horse_id"] = m.group(1)
 
-            barei = row.select_one(".Barei")
+            barei = row.select_one("[class*='Barei'], [class*='馬齢']")
             if barei:
                 t = barei.get_text(strip=True)
                 h["sex"] = t[0] if t else ""
                 h["age"] = int(t[1:]) if len(t) > 1 and t[1:].isdigit() else 0
 
-            futan = row.select_one(".Futan")
+            futan = row.select_one("[class*='Futan'], [class*='斤量']")
             h["weight"] = float(futan.get_text(strip=True)) if futan else 55.0
 
-            jockey = row.select_one(".Jockey a")
+            jockey = row.select_one("[class*='Jockey'] a, [class*='騎手'] a")
             h["jockey"] = jockey.get_text(strip=True) if jockey else ""
             h["jockey_id"] = ""
             if jockey and jockey.get("href"):
@@ -192,10 +182,10 @@ def get_shutuba(race_id: str) -> pd.DataFrame:
                 if m:
                     h["jockey_id"] = m.group(1)
 
-            trainer = row.select_one(".Trainer a")
+            trainer = row.select_one("[class*='Trainer'] a, [class*='調教師'] a")
             h["trainer"] = trainer.get_text(strip=True) if trainer else ""
 
-            hw = row.select_one(".Weight")
+            hw = row.select_one("[class*='Weight'], [class*='馬体重']")
             if hw:
                 t = hw.get_text(strip=True)
                 m = re.search(r"(\d+)", t)
