@@ -70,7 +70,6 @@ def find_race_id(place: str, race_num: int) -> str:
 
         # 方法2: 総当たりでshutuba.htmlに直接アクセス＋日付確認
         print(f"[INFO] 方法2: 総当たり {place}{race_num}R {date_str}")
-        date_checks = [date_str, f"{month}月{day}日", f"{month}/{day}"]
         for kai in range(1, 6):
             for nichi in range(1, 10):
                 race_id = f"{year}{place_code}{kai:02d}{nichi:02d}{race_num:02d}"
@@ -81,8 +80,9 @@ def find_race_id(place: str, race_num: int) -> str:
                     horse_rows = soup.select("tr[class*='HorseList']")
                     if not horse_rows or len(horse_rows) < 3:
                         continue
-                    # ページ内に対象日付が含まれるか確認
-                    if any(c in res.text for c in date_checks):
+                    # kaisai_date=YYYYMMDD がページ内リンクに含まれるか確認
+                    # （日付テキストより確実：そのレース専用の日付）
+                    if f"kaisai_date={date_str}" in res.text:
                         print(f"[INFO] 方法2でrace_id発見: {race_id} ({len(horse_rows)}頭) 日付OK")
                         return race_id
                 except Exception:
