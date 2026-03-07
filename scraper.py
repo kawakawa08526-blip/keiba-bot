@@ -34,8 +34,8 @@ def make_race_id(date: str, place: str, kai: int, nichi: int, race_num: int) -> 
 def find_race_id(place: str, race_num: int) -> str:
     """
     netkeibaのrace_idを取得する
-    方法1: race_list.htmlから12桁IDを全抽出（最速）
-    方法2: shutuba.htmlに直接アクセスして出馬表の有無を確認
+    方法1: race_list.htmlから12桁IDを全抽出（最速・確実）
+    方法2: shutuba.htmlに直接アクセスして出馬表＋日付を確認
     """
     today = datetime.today()
     place_code = PLACE_CODES.get(place, "")
@@ -46,28 +46,31 @@ def find_race_id(place: str, race_num: int) -> str:
         target = today + timedelta(days=delta)
         date_str = target.strftime("%Y%m%d")
         year = date_str[:4]
+        month = str(int(date_str[4:6]))
+        day   = str(int(date_str[6:8]))
 
         # 方法1: race_list.htmlから12桁IDを全抽出
         try:
             url = f"https://race.netkeiba.com/top/race_list.html?kaisai_date={date_str}"
             res = _get(url, sleep=1.0)
-            # 12桁の数字を全て抽出（場所コードとR番号で絞り込み）
             ids = re.findall(r"\d{12}", res.text)
+            # 場所コードとR番号が一致し、かつ年が正しいものだけ
             matched = [
                 i for i in ids
-                if i[4:6] == place_code and int(i[-2:]) == race_num
+                if i[:4] == year
+                and i[4:6] == place_code
+                and int(i[-2:]) == race_num
             ]
             if matched:
-                # 重複排除して最初のものを返す
                 race_id = list(dict.fromkeys(matched))[0]
                 print(f"[INFO] 方法1でrace_id発見: {race_id}")
                 return race_id
         except Exception as e:
             print(f"[ERROR] 方法1失敗: {e}")
 
-        # 方法2: 開催回・日を総当たりでshutuba.htmlに直接アクセス
-        # ページ内の「出走頭数」テキストで今日のレースか確認
+        # 方法2: 総当たりでshutuba.htmlに直接アクセス＋日付確認
         print(f"[INFO] 方法2: 総当たり {place}{race_num}R {date_str}")
+        date_checks = [date_str, f"{month}月{day}日", f"{month}/{day}"]
         for kai in range(1, 6):
             for nichi in range(1, 10):
                 race_id = f"{year}{place_code}{kai:02d}{nichi:02d}{race_num:02d}"
@@ -75,40 +78,16 @@ def find_race_id(place: str, race_num: int) -> str:
                     url = f"https://race.netkeiba.com/race/shutuba.html?race_id={race_id}"
                     res = _get(url, sleep=0.4)
                     soup = BeautifulSoup(res.text, "html.parser")
-
-                    # 出馬表の存在確認
-                    horse_rows = soup.select("tr.HorseList")
+                    horse_rows = soup.select("tr[class*='HorseList']")
                     if not horse_rows or len(horse_rows) < 3:
                         continue
-
-                    # RaceData02に含まれる日付情報で確認
-                    # 例: "2026年3月7日" or "3月7日" or ページURLに日付
-                    page_text = res.text
-
-                    # 年月日の各パターン
-                    m = str(int(date_str[4:6]))
-                    d = str(int(date_str[6:8]))
-                    checks = [
-                        date_str,           # "20260307"
-                        f"{m}月{d}日",      # "3月7日"
-                        f"{m}/{d}",         # "3/7"
-                        f"kaisai_date={date_str}",  # URLパラメータ
-                    ]
-                    if any(c in page_text for c in checks):
-                        print(f"[INFO] 方法2でrace_id発見: {race_id} ({len(horse_rows)}頭) 日付確認OK")
+                    # ページ内に対象日付が含まれるか確認
+                    if any(c in res.text for c in date_checks):
+                        print(f"[INFO] 方法2でrace_id発見: {race_id} ({len(horse_rows)}頭) 日付OK")
                         return race_id
-
-                    # 日付文字列が見つからなくても、前後のrace_idリンクから日付を推定
-                    # ページ内の全race_idを抽出して日付を確認
-                    page_ids = re.findall(r"\d{12}", page_text)
-                    if any(i.startswith(date_str[:8].replace("-","")) for i in page_ids):
-                        print(f"[INFO] 方法2(page_ids)でrace_id発見: {race_id}")
-                        return race_id
-
                 except Exception:
                     continue
 
-    # フォールバック
     date_str = today.strftime("%Y%m%d")
     print(f"[WARNING] race_idが見つからなかった: {place}{race_num}R → フォールバック")
     return make_race_id(date_str[:4], place, 1, 1, race_num)
@@ -123,7 +102,7 @@ def find_race_id_by_date(place: str, race_num: int, date_str: str) -> str:
         res = _get(url, sleep=1.0)
         ids = re.findall(r"\d{12}", res.text)
         for race_id in ids:
-            if race_id[4:6] == place_code and int(race_id[-2:]) == race_num:
+            if race_id[:4] == year and race_id[4:6] == place_code and int(race_id[-2:]) == race_num:
                 return race_id
     except Exception as e:
         print(f"[ERROR] find_race_id_by_date失敗: {e}")
@@ -146,12 +125,10 @@ def get_shutuba(race_id: str) -> pd.DataFrame:
         res = _get(url)
         soup = BeautifulSoup(res.text, "html.parser")
         horses = []
-        # HorseListを持つtr要素を取得（クラス名が変わっても対応）
         all_rows = soup.select("tr[class*='HorseList']")
         print(f"[INFO] get_shutuba: {len(all_rows)}頭 race_id={race_id}")
         for row in all_rows:
             h = {}
-            # 馬番（クラス名が英語・日本語両対応）
             num = row.select_one("[class*='Umaban'], [class*='うまばん']")
             h["num"] = int(num.get_text(strip=True)) if num else 0
 
@@ -170,6 +147,9 @@ def get_shutuba(race_id: str) -> pd.DataFrame:
                 t = barei.get_text(strip=True)
                 h["sex"] = t[0] if t else ""
                 h["age"] = int(t[1:]) if len(t) > 1 and t[1:].isdigit() else 0
+            else:
+                h["sex"] = ""
+                h["age"] = 0
 
             futan = row.select_one("[class*='Futan'], [class*='斤量']")
             h["weight"] = float(futan.get_text(strip=True)) if futan else 55.0
@@ -219,11 +199,11 @@ def get_race_info(race_id: str) -> dict:
     try:
         soup = BeautifulSoup(_get(url).text, "html.parser")
 
-        title = soup.select_one(".RaceName")
+        title = soup.select_one(".RaceName, [class*='RaceName'], [class*='レース名']")
         if title:
             info["race_name"] = title.get_text(strip=True)
 
-        d1 = soup.select_one(".RaceData01")
+        d1 = soup.select_one(".RaceData01, [class*='RaceData01']")
         if d1:
             t = d1.get_text()
             m = re.search(r"(\d{3,4})m", t)
@@ -232,7 +212,7 @@ def get_race_info(race_id: str) -> dict:
             info["surface"] = "芝" if "芝" in t else "ダート"
             info["direction"] = "右" if "右" in t else ("左" if "左" in t else "直線")
 
-        d2 = soup.select_one(".RaceData02")
+        d2 = soup.select_one(".RaceData02, [class*='RaceData02']")
         if d2:
             t2 = d2.get_text()
             for cond in ["不良", "重", "稍重", "良"]:
@@ -282,18 +262,18 @@ def get_horse_history(horse_id: str, limit: int = 5) -> pd.DataFrame:
                 continue
             r = {}
             try:
-                r["rank"] = cols[11].get_text(strip=True)
-                dist_txt = cols[7].get_text(strip=True)
+                r["rank"]     = cols[11].get_text(strip=True)
+                dist_txt      = cols[7].get_text(strip=True)
                 dm = re.search(r"\d+", dist_txt)
                 r["distance"] = int(dm.group()) if dm else 0
-                r["surface"] = "芝" if "芝" in dist_txt else "ダート"
-                r["track"] = cols[9].get_text(strip=True)
+                r["surface"]  = "芝" if "芝" in dist_txt else "ダート"
+                r["track"]    = cols[9].get_text(strip=True)
                 c1 = cols[20].get_text(strip=True) if len(cols) > 20 else ""
                 c4 = cols[21].get_text(strip=True) if len(cols) > 21 else ""
-                r["corner1"] = int(c1) if c1.isdigit() else None
-                r["corner4"] = int(c4) if c4.isdigit() else None
+                r["corner1"]  = int(c1) if c1.isdigit() else None
+                r["corner4"]  = int(c4) if c4.isdigit() else None
                 l3 = cols[22].get_text(strip=True) if len(cols) > 22 else ""
-                r["last3f"] = float(l3) if re.match(r"\d+\.\d+", l3) else None
+                r["last3f"]   = float(l3) if re.match(r"\d+\.\d+", l3) else None
                 records.append(r)
             except:
                 continue

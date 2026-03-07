@@ -154,7 +154,7 @@ def generate_bets(ranked: pd.DataFrame, budget: int = 0) -> dict:
     h4 = top[3] if n > 3 else None
     h5 = top[4] if n > 4 else None
     
-    def fmt(h): return f"{int(h['num'])}({h['name']})"
+    def fmt(h): return f"{int(h['num'])}番"
     
     bets = {}
 
@@ -176,8 +176,8 @@ def generate_bets(ranked: pd.DataFrame, budget: int = 0) -> dict:
         umatan = []
         for h in [h2, h3]:
             if h:
-                umatan.append(f"{fmt(h1)}→{fmt(h)}")
-                umatan.append(f"{fmt(h)}→{fmt(h1)}")
+                umatan.append(f"{int(h1['num'])}→{int(h['num'])}")
+                umatan.append(f"{int(h['num'])}→{int(h1['num'])}")
         bets["馬単"] = umatan
 
     # 3連複（上位4頭ボックス）
@@ -190,10 +190,10 @@ def generate_bets(ranked: pd.DataFrame, budget: int = 0) -> dict:
 
     # 3連単（◎軸フォーメーション）
     if h2 and h3:
-        santan = [f"{fmt(h1)}→{fmt(h2)}→{fmt(h3)}", f"{fmt(h1)}→{fmt(h3)}→{fmt(h2)}"]
+        santan = [f"{int(h1['num'])}→{int(h2['num'])}→{int(h3['num'])}", f"{int(h1['num'])}→{int(h3['num'])}→{int(h2['num'])}"]
         if h4:
-            santan.append(f"{fmt(h1)}→{fmt(h2)}→{fmt(h4)}")
-            santan.append(f"{fmt(h2)}→{fmt(h1)}→{fmt(h3)}")
+            santan.append(f"{int(h1['num'])}→{int(h2['num'])}→{int(h4['num'])}")
+            santan.append(f"{int(h2['num'])}→{int(h1['num'])}→{int(h3['num'])}")
         bets["3連単"] = santan
 
     if budget > 0:
