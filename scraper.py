@@ -143,7 +143,24 @@ def find_race_id_by_date(place: str, race_num: int, date_str: str) -> str:
 def get_shutuba(race_id: str) -> pd.DataFrame:
     url = f"https://race.netkeiba.com/race/shutuba.html?race_id={race_id}"
     try:
-        soup = BeautifulSoup(_get(url).text, "html.parser")
+        res = _get(url)
+        soup = BeautifulSoup(res.text, "html.parser")
+        # デバッグ：HTMLの一部をログ出力
+        rows_check = soup.select("tr.HorseList")
+        print(f"[DEBUG] get_shutuba race_id={race_id}")
+        print(f"[DEBUG] HorseList行数: {len(rows_check)}")
+        # HorseListがない場合は別のセレクタを試す
+        alt1 = soup.select("tr.Tr_HorseList")
+        alt2 = soup.select(".HorseList")
+        alt3 = soup.select("table.Shutuba")
+        print(f"[DEBUG] Tr_HorseList={len(alt1)}, .HorseList={len(alt2)}, table.Shutuba={len(alt3)}")
+        # HTMLの一部をログ出力（構造確認用）
+        body = res.text
+        idx = body.find("HorseList")
+        if idx > 0:
+            print(f"[DEBUG] HorseList付近: {body[idx-50:idx+200][:200]}")
+        else:
+            print(f"[DEBUG] HorseListなし。HTML先頭: {body[1000:1200]}")
         horses = []
         for row in soup.select("tr.HorseList"):
             h = {}
